@@ -123,6 +123,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     {
         int id = LOWORD(wParam);
 
+        // browse button
         if (id == ID_BUTTON_BROWSE)
         {
             wchar_t folderPath[MAX_PATH];
@@ -132,11 +133,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             }
         }
 
-
+        // close button
         if (id == ID_BUTTON_CLOSE) {
             PostQuitMessage(0);
         }
 
+        // launch button
         if (id == ID_BUTTON_LAUNCH)
         {
             wchar_t pathBuffer[512];
@@ -159,6 +161,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             si.wShowWindow = SW_HIDE;
 
             PROCESS_INFORMATION pi;
+
+            // launch Cofee
             if (CreateProcess(NULL, &command[0], NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi))
             {
                 CloseHandle(hWritePipe);
@@ -177,7 +181,68 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                 delete[] wideOutput;
             }
             else {
-                MessageBox(hwnd, L"Error: Could not run cofee.exe", L"Error", MB_ICONERROR);
+                DWORD error = GetLastError();
+
+                CloseHandle(hReadPipe);
+                CloseHandle(hWritePipe);
+
+                
+
+                if (error == ERROR_FILE_NOT_FOUND)
+                {
+                    int result = MessageBox(
+                        hwnd,
+                        L"Cofee.exe was not found!\n\n"
+                        L"Project Glass needs the 'Cofee' engine to run scans.\n"
+                        L"Would you like to download it now?",
+                        L"Missing Dependency",
+                        MB_YESNO | MB_ICONWARNING
+                    );
+
+                    if (result == IDYES)
+                    {
+                        wchar_t pathEnv[4096];
+                        GetEnvironmentVariable(L"PATH", pathEnv, 4096);
+
+                        bool hasDevPath = (wcsstr(pathEnv, L"\\bin") != NULL ||
+                            wcsstr(pathEnv, L"\\tools") != NULL);
+
+						if (hasDevPath)
+						{
+							MessageBox(
+								hwnd,
+								L"It seems you have a development environment installed.\n"
+								L"Please check your development tools' package manager for Cofee.exe.\n"
+								L"Alternatively, you can download it from GitHub.",
+								L"Info",
+								MB_OK | MB_ICONINFORMATION
+							);
+						}
+                        else
+                        {
+							MessageBox(
+								hwnd,
+								L"You will be redirected to the latest Cofee release page on GitHub.\n"
+								L"Please download the appropriate version and place Cofee.exe in the same folder as this launcher.",
+								L"Info",
+								MB_OK | MB_ICONINFORMATION
+							);
+                        }
+                        ShellExecute(
+                            NULL,
+                            L"open",
+                            L"https://github.com/shadowofaroman/Operation-Cofee/releases/latest",
+                            NULL, NULL, SW_SHOWNORMAL
+                        );
+
+                    }
+                }
+                else
+                {
+					wchar_t errorMsg[256];
+					wsprintf(errorMsg, L"Failed to launch Cofee.exe. Error code: %lu", error);
+					MessageBox(hwnd, errorMsg, L"Error", MB_ICONERROR);
+                }
             }
         }
     }
