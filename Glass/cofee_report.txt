@@ -1,16 +1,18 @@
 ------------------------------------------------
-PROJECT SCAN REPORT: .
+PROJECT SCAN REPORT: F:\E\Protfolio
 ------------------------------------------------
 TYPE           FILES          LINES (CODE)   
 ------------------------------------------------
-.cpp           1              169            
+.css           1              435            
+.html          1              85             
+.js            1              159            
 ------------------------------------------------
-TOTAL REAL CODE: 169
+TOTAL REAL CODE: 679
 ------------------------------------------------
 
 [VERBOSE ANALYTICS]
-Largest File:  main.cpp (169 lines)
-              -> .\main.cpp
-Smallest File: main.cpp (169 lines)
-              -> .\main.cpp
+Largest File:  index.css (435 lines)
+              -> F:\E\Protfolio\index.css
+Smallest File: index.html (85 lines)
+              -> F:\E\Protfolio\index.html
 ------------------------------------------------

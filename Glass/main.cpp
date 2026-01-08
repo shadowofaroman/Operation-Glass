@@ -2,13 +2,23 @@
 #define UNICODE
 #endif 
 
+
+#pragma comment(linker,"\"/manifestdependency:type='win32' \
+name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
+processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
+
 #include <windows.h>
 #include <string>
+#include <commctrl.h>
+#include <shobjidl.h>
+
+#pragma comment(lib, "comctl32.lib")
 
 // --- CONTROLS IDs ---
 #define ID_BUTTON_LAUNCH 1
 #define ID_INPUT_BOX 2
 #define ID_BUTTON_CLOSE 3  
+#define ID_BUTTON_BROWSE 4
 
 // --- GLOBAL VARIABLES ---
 HFONT hFont = NULL; 
@@ -19,6 +29,40 @@ HFONT CreateModernFont(int size) {
         size, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
         DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+}
+
+bool OpenFolderDialog(HWND owner, wchar_t* buffer, int maxLen)
+{
+	IFileDialog* pFileDialog = NULL;
+	HRESULT hr = CoCreateInstance(CLSID_FileOpenDialog, NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pFileDialog));
+	if (SUCCEEDED(hr))
+	{
+		DWORD options;
+		pFileDialog->GetOptions(&options);
+		pFileDialog->SetOptions(options | FOS_PICKFOLDERS);
+		hr = pFileDialog->Show(owner);
+		if (SUCCEEDED(hr))
+		{
+			IShellItem* pItem;
+			hr = pFileDialog->GetResult(&pItem);
+			if (SUCCEEDED(hr))
+			{
+				PWSTR pszFilePath = NULL;
+				hr = pItem->GetDisplayName(SIGDN_FILESYSPATH, &pszFilePath);
+				if (SUCCEEDED(hr))
+				{
+					wcsncpy_s(buffer, maxLen, pszFilePath, _TRUNCATE);
+					CoTaskMemFree(pszFilePath);
+					pItem->Release();
+					pFileDialog->Release();
+					return true;
+				}
+				pItem->Release();
+			}
+		}
+		pFileDialog->Release();
+	}
+	return false;
 }
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
@@ -33,13 +77,25 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         HWND hEdit = CreateWindow(
             L"EDIT", L"",
             WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL | ES_CENTER, 
-            390, 250, 500, 35, 
+            390, 250, 400, 35, 
             hwnd, (HMENU)ID_INPUT_BOX, (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL
         );
         SendMessage(hEdit, WM_SETFONT, (WPARAM)hFont, TRUE);
 
+        SendMessage(hEdit, EM_SETCUEBANNER, TRUE, (LPARAM)L"Enter command or path to scan...");
+
+        // The Browse Button 
+        HWND hBrowse = CreateWindow(
+            L"BUTTON", L"...", 
+            WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON | BS_FLAT,
+            800, 250, 50, 35, 
+            hwnd, (HMENU)ID_BUTTON_BROWSE, (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL
+        );
+        SendMessage(hBrowse, WM_SETFONT, (WPARAM)hFont, TRUE);
+
+        // The Launch Button
         HWND hButton = CreateWindow(
-            L"BUTTON", L"LAUNCH COMMAND",
+            L"BUTTON", L"LAUNCH COFEE",
             WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON | BS_FLAT,
             500, 310, 280, 50,
             hwnd, (HMENU)ID_BUTTON_LAUNCH, (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL
@@ -66,6 +122,16 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     case WM_COMMAND:
     {
         int id = LOWORD(wParam);
+
+        if (id == ID_BUTTON_BROWSE)
+        {
+            wchar_t folderPath[MAX_PATH];
+            if (OpenFolderDialog(hwnd, folderPath, MAX_PATH))
+            {
+                SetDlgItemText(hwnd, ID_INPUT_BOX, folderPath);
+            }
+        }
+
 
         if (id == ID_BUTTON_CLOSE) {
             PostQuitMessage(0);
@@ -155,7 +221,9 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow)
 {
+    CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
     const wchar_t CLASS_NAME[] = L"GlassLauncherClass";
+    
 
     WNDCLASS wc = { };
     wc.lpfnWndProc = WindowProc;
@@ -188,5 +256,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
         TranslateMessage(&msg);
         DispatchMessage(&msg);
     }
+
+    CoUninitialize();
     return 0;
 }
