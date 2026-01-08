@@ -1,16 +1,18 @@
 ------------------------------------------------
-PROJECT SCAN REPORT: .
+PROJECT SCAN REPORT: F:\E\dot\Operation.Theep\Theep
 ------------------------------------------------
 TYPE           FILES          LINES (CODE)   
 ------------------------------------------------
-.cpp           1              114            
+.cs            45             57545          
+.html          2              1590           
+.json          14             1439           
 ------------------------------------------------
-TOTAL REAL CODE: 114
+TOTAL REAL CODE: 60574
 ------------------------------------------------
 
 [VERBOSE ANALYTICS]
-Largest File:  main.cpp (114 lines)
-              -> .\main.cpp
-Smallest File: main.cpp (114 lines)
-              -> .\main.cpp
+Largest File:  FluentUI.cs (7917 lines)
+              -> F:\E\dot\Operation.Theep\Theep\bin\Debug\net9.0-windows10.0.19041.0\win10-x64\FluentUI.cs
+Smallest File: Theep.sourcelink.json (1 lines)
+              -> F:\E\dot\Operation.Theep\Theep\obj\Debug\net9.0-android\Theep.sourcelink.json
 ------------------------------------------------

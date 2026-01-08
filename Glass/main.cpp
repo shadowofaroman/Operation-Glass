@@ -1,33 +1,42 @@
-﻿// Enable Unicode support for Windows API
+﻿
 #ifndef UNICODE
 #define UNICODE
 #endif 
 
-#include <windows.h>  // Core Windows API functions
-#include <string>     // For std::string (text manipulation)
+#include <windows.h>  
+#include <string>     
 
-// Button identifier - used to detect which button was clicked
+// Button identifiers
 #define ID_BUTTON_LAUNCH 1
+#define ID_INPUT_BOX 2
 
-// Main window event handler
-// Windows calls this function whenever something happens to our window
-// (clicks, painting, closing, etc.)
+
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
     switch (uMsg)
     {
     case WM_CREATE:
-        // Window is being created - this is where we add our UI controls
     {
-        // Create the main launch button
+
         CreateWindow(
-            L"BUTTON",                      // Control type
-            L"Launch Cofee ☕",              // Button text with coffee emoji
+            L"EDIT",                      
+            L"",      
+            WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL, 
+            400, 250,    
+            480, 30,        
+            hwnd,
+            (HMENU)ID_INPUT_BOX,       
+            (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE),
+            NULL
+        );
+        CreateWindow(
+            L"BUTTON",                      
+            L"Launch Cofee ☕",     
             WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
             500, 300,                       // Position (X, Y)
             280, 80,                        // Size (Width, Height)
             hwnd,                           // Parent window
-            (HMENU)ID_BUTTON_LAUNCH,        // Button ID for identification
+            (HMENU)ID_BUTTON_LAUNCH,        // Button ID 
             (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE),
             NULL
         );
@@ -35,28 +44,45 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     return 0;
 
     case WM_COMMAND:
-        // A button or menu item was clicked
     {
         if (LOWORD(wParam) == ID_BUTTON_LAUNCH)
         {
+
+            wchar_t pathBuffer[512];
+            GetDlgItemText(hwnd, ID_INPUT_BOX, pathBuffer, 512);
+
+            std::wstring command = L"cofee.exe ";
+
+            if (wcslen(pathBuffer) > 0)
+            {
+				command += L"\"";
+				command += pathBuffer;
+				command += L"\" ";
+            }
+            else
+            {
+                // Default to current directory if box is empty
+                command += L".";
+            }
+
+            command += L" -r -v";
             // Setup pipes to capture COFEE's console output
             HANDLE hReadPipe, hWritePipe;
             SECURITY_ATTRIBUTES sa = { sizeof(SECURITY_ATTRIBUTES), NULL, TRUE };
             CreatePipe(&hReadPipe, &hWritePipe, &sa, 0);
 
-            // Configure the process to run hidden (no console window)
             STARTUPINFO si = { sizeof(STARTUPINFO) };
             si.dwFlags = STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES;
             si.hStdOutput = hWritePipe;  // Redirect output to our pipe
             si.hStdError = hWritePipe;   // Redirect errors to our pipe
-            si.wShowWindow = SW_HIDE;    // Don't show console window
+            si.wShowWindow = SW_HIDE;
 
             PROCESS_INFORMATION pi;
             // Command to execute: run COFEE on current directory with report and verbose flags
             wchar_t cmdLine[] = L"cofee.exe . -r -v";
 
             // Launch COFEE as a child process
-            if (CreateProcess(NULL, cmdLine, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi))
+            if (CreateProcess(NULL, &command[0], NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi))
             {
                 CloseHandle(hWritePipe);
 
@@ -87,32 +113,33 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                 MessageBox(hwnd, wideOutput, L"COFEE Results", MB_OK);
                 delete[] wideOutput;
             }
+            else
+            {
+                MessageBox(hwnd, L"Failed to start Cofee.exe! Make sure it is in the PATH or same folder.", L"Error", MB_ICONERROR);
+            }
+
         }
     }
     return 0;
 
     case WM_DESTROY:
-        // User closed the window - exit the application
         PostQuitMessage(0);
         return 0;
 
     case WM_PAINT:
-        // Windows needs us to redraw the window
     {
         PAINTSTRUCT ps;
         HDC hdc = BeginPaint(hwnd, &ps);
 
-        // Fill window with dark gray background
         HBRUSH brush = CreateSolidBrush(RGB(30, 30, 30));
         FillRect(hdc, &ps.rcPaint, brush);
-        DeleteObject(brush);  // Clean up to avoid memory leak
+        DeleteObject(brush); 
 
-        // Draw title text in white
-        SetBkMode(hdc, TRANSPARENT);           // No background behind text
-        SetTextColor(hdc, RGB(255, 255, 255)); // White text color
+        SetBkMode(hdc, TRANSPARENT);  
+        SetTextColor(hdc, RGB(255, 255, 255)); 
 
         RECT textRect = { 100, 100, 1180, 200 };
-        DrawText(hdc, L"PROJECT GLASS LAUNCHER", -1, &textRect,
+        DrawText(hdc, L"GLASS LAUNCHER", -1, &textRect,
             DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 
         EndPaint(hwnd, &ps);
@@ -120,34 +147,31 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     return 0;
     }
 
-    // Let Windows handle any messages we don't care about
     return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
 
 // Application entry point
-// This is where the program starts executing
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     PWSTR pCmdLine, int nCmdShow)
 {
-    // Register our window class (the blueprint for our window)
     const wchar_t CLASS_NAME[] = L"GlassLauncherClass";
 
     WNDCLASS wc = { };
-    wc.lpfnWndProc = WindowProc;      // Connect our event handler
-    wc.hInstance = hInstance;         // This application instance
-    wc.lpszClassName = CLASS_NAME;    // Window class name
-    wc.hCursor = LoadCursor(NULL, IDC_ARROW);  // Use standard arrow cursor
+    wc.lpfnWndProc = WindowProc; 
+    wc.hInstance = hInstance;  
+    wc.lpszClassName = CLASS_NAME;   
+    wc.hCursor = LoadCursor(NULL, IDC_ARROW);  
 
     RegisterClass(&wc);
 
     // Create the main window
     HWND hwnd = CreateWindowEx(
-        0,                            // No extended styles
-        CLASS_NAME,                   // Use our registered class
-        L"Project Glass - Launcher",  // Window title
-        WS_OVERLAPPEDWINDOW,          // Standard window style
-        CW_USEDEFAULT, CW_USEDEFAULT, // Let Windows choose position
-        1280, 720,                    // Window size
+        0,                            
+        CLASS_NAME,                  
+        L"Glass. The Cofee Launcher",  
+        WS_OVERLAPPEDWINDOW,        
+        CW_USEDEFAULT, CW_USEDEFAULT, 
+        1280, 720,                  
         NULL, NULL, hInstance, NULL
     );
 
@@ -157,12 +181,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     // Make the window visible
     ShowWindow(hwnd, nCmdShow);
 
-    // Message loop - keeps the application running
-    // Processes all events (clicks, keyboard, etc.)
     MSG msg = { };
     while (GetMessage(&msg, NULL, 0, 0) > 0)
     {
-        TranslateMessage(&msg);  // Translate keyboard input
+        TranslateMessage(&msg); 
         DispatchMessage(&msg);   // Send message to WindowProc
     }
 
