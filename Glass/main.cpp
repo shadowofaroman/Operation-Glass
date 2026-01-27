@@ -7,10 +7,13 @@
 name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
 processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
+#pragma comment(lib, "urlmon.lib")
+
 #include <windows.h>
 #include <string>
 #include <commctrl.h>
 #include <shobjidl.h>
+#include <urlmon.h>
 
 #pragma comment(lib, "comctl32.lib")
 
@@ -190,51 +193,41 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
                 if (error == ERROR_FILE_NOT_FOUND)
                 {
+                    // Ask User
                     int result = MessageBox(
                         hwnd,
-                        L"Cofee.exe was not found!\n\n"
-                        L"Project Glass needs the 'Cofee' engine to run scans.\n"
-                        L"Would you like to download it now?",
-                        L"Missing Dependency",
-                        MB_YESNO | MB_ICONWARNING
+                        L"Cofee.exe is missing!\n\n"
+                        L"We detected a local Vault Server.\n"
+                        L"Attempt to download from http://localhost:3000?",
+                        L"Dependency Check",
+                        MB_YESNO | MB_ICONQUESTION
                     );
 
                     if (result == IDYES)
                     {
-                        wchar_t pathEnv[4096];
-                        GetEnvironmentVariable(L"PATH", pathEnv, 4096);
-
-                        bool hasDevPath = (wcsstr(pathEnv, L"\\bin") != NULL ||
-                            wcsstr(pathEnv, L"\\tools") != NULL);
-
-						if (hasDevPath)
-						{
-							MessageBox(
-								hwnd,
-								L"It seems you have a development environment installed.\n"
-								L"Please check your development tools' package manager for Cofee.exe.\n"
-								L"Alternatively, you can download it from GitHub.",
-								L"Info",
-								MB_OK | MB_ICONINFORMATION
-							);
-						}
-                        else
-                        {
-							MessageBox(
-								hwnd,
-								L"You will be redirected to the latest Cofee release page on GitHub.\n"
-								L"Please download the appropriate version and place Cofee.exe in the same folder as this launcher.",
-								L"Info",
-								MB_OK | MB_ICONINFORMATION
-							);
-                        }
-                        ShellExecute(
+                        // the Native Download
+                        // HRESULT URLDownloadToFile(caller, url, filename, reserved, callback)
+                        HRESULT hr = URLDownloadToFile(
                             NULL,
-                            L"open",
-                            L"https://github.com/shadowofaroman/Operation-Cofee/releases/latest",
-                            NULL, NULL, SW_SHOWNORMAL
+                            L"https://operation-vault.onrender.com/download/cofee.exe",
+                            L"cofee.exe",                                 
+                            0,
+                            NULL
                         );
 
+                        if (hr == S_OK)
+                        {
+                            MessageBox(hwnd, L"Download Complete!\nClick Launch again.", L"Success", MB_OK);
+                        }
+                        else
+                        {
+                            MessageBox(
+                                hwnd,
+                                L"Download Failed.\nIs 'Operation-Vault' running on Port 3000?",
+                                L"Connection Error",
+                                MB_OK | MB_ICONERROR
+                            );
+                        }
                     }
                 }
                 else
