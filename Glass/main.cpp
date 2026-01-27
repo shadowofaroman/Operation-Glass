@@ -15,6 +15,9 @@ processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 #include <shobjidl.h>
 #include <urlmon.h>
 
+#pragma message("resource.h IDI_ICON1 = " STRINGIZE(IDI_ICON1))
+#include "resource.h"
+
 #pragma comment(lib, "comctl32.lib")
 
 // --- CONTROLS IDs ---
@@ -22,9 +25,17 @@ processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 #define ID_INPUT_BOX 2
 #define ID_BUTTON_CLOSE 3  
 #define ID_BUTTON_BROWSE 4
+#define ID_PROGRESS_BAR 5
+#define ID_STATUS_TEXT 6
+#define ID_DOWNLOAD_TIMER 100
+
+HWND hProgressBar = NULL;
+HWND hStatusText = NULL;
 
 // --- GLOBAL VARIABLES ---
 HFONT hFont = NULL; 
+UINT_PTR downloadTimerID = 0;
+int dotCount = 0;
 
 //  Create a Modern Font 
 HFONT CreateModernFont(int size) {
@@ -67,6 +78,49 @@ bool OpenFolderDialog(HWND owner, wchar_t* buffer, int maxLen)
 	}
 	return false;
 }
+
+class DownloadCallback : public IBindStatusCallback
+{
+public:
+    STDMETHOD(OnProgress)(ULONG ulProgress, ULONG ulProgressMax, ULONG ulStatusCode, LPCWSTR szStatusText)
+    {
+        if (ulProgressMax > 0 && hProgressBar)
+        {
+            int percent = (int)((ulProgress * 100) / ulProgressMax);
+            SendMessage(hProgressBar, PBM_SETPOS, percent, 0);
+
+            // Update status message based on progress
+            if (percent < 30)
+                SetWindowText(hStatusText, L"Cofee is brewing...");
+            else if (percent < 70)
+                SetWindowText(hStatusText, L"Almost ready...");
+            else if (percent < 100)
+                SetWindowText(hStatusText, L"Your cofee is ready. You're good to go!");
+        }
+        return S_OK;
+    }
+
+    // Required IBindStatusCallback methods (minimal implementation)
+    STDMETHOD(OnStartBinding)(DWORD, IBinding*) { return S_OK; }
+    STDMETHOD(GetBindInfo)(DWORD*, BINDINFO*) { return S_OK; }
+    STDMETHOD(OnDataAvailable)(DWORD, DWORD, FORMATETC*, STGMEDIUM*) { return S_OK; }
+    STDMETHOD(OnObjectAvailable)(REFIID, IUnknown*) { return S_OK; }
+    STDMETHOD(GetPriority)(LONG*) { return S_OK; }
+    STDMETHOD(OnLowResource)(DWORD) { return S_OK; }
+    STDMETHOD(OnStopBinding)(HRESULT, LPCWSTR) { return S_OK; }
+    STDMETHOD_(ULONG, AddRef)() { return 1; }
+    STDMETHOD_(ULONG, Release)() { return 1; }
+    STDMETHOD(QueryInterface)(REFIID riid, void** ppv)
+    {
+        if (riid == IID_IUnknown || riid == IID_IBindStatusCallback)
+        {
+            *ppv = this;
+            return S_OK;
+        }
+        *ppv = NULL;
+        return E_NOINTERFACE;
+    }
+};
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
@@ -112,6 +166,24 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             hwnd, (HMENU)ID_BUTTON_CLOSE, (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL
         );
         SendMessage(hClose, WM_SETFONT, (WPARAM)hFont, TRUE);
+
+        hProgressBar = CreateWindowEx(
+            0, PROGRESS_CLASS, NULL,
+            WS_CHILD | PBS_SMOOTH,
+            440, 400, 400, 30,
+            hwnd, (HMENU)ID_PROGRESS_BAR,
+            (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL
+        );
+        SendMessage(hProgressBar, PBM_SETRANGE, 0, MAKELPARAM(0, 100));
+
+        hStatusText = CreateWindow(
+            L"STATIC", L"",
+            WS_CHILD | SS_CENTER,
+            440, 440, 400, 30,
+            hwnd, (HMENU)ID_STATUS_TEXT,
+            (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL
+        );
+        SendMessage(hStatusText, WM_SETFONT, (WPARAM)hFont, TRUE);
     }
     return 0;
 
@@ -193,41 +265,93 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
                 if (error == ERROR_FILE_NOT_FOUND)
                 {
-                    // Ask User
-                    int result = MessageBox(
-                        hwnd,
-                        L"Cofee.exe is missing!\n\n"
-                        L"We detected a local Vault Server.\n"
-                        L"Attempt to download from http://localhost:3000?",
-                        L"Dependency Check",
-                        MB_YESNO | MB_ICONQUESTION
-                    );
+                    // Build path to cofee.exe in the same directory as this .exe
+                    wchar_t exePath[MAX_PATH];
+                    GetModuleFileName(NULL, exePath, MAX_PATH);
+                    wchar_t* lastSlash = wcsrchr(exePath, L'\\');
+                    if (lastSlash) *(lastSlash + 1) = L'\0';
 
-                    if (result == IDYES)
+                    wchar_t cofeePath[MAX_PATH];
+                    wcscpy_s(cofeePath, exePath);
+                    wcscat_s(cofeePath, L"cofee.exe");
+
+                    // Check if cofee.exe already exists
+                    DWORD fileAttr = GetFileAttributes(cofeePath);
+                    bool cofeeExists = (fileAttr != INVALID_FILE_ATTRIBUTES &&
+                        !(fileAttr & FILE_ATTRIBUTE_DIRECTORY));
+
+                    if (!cofeeExists)
                     {
-                        // the Native Download
-                        // HRESULT URLDownloadToFile(caller, url, filename, reserved, callback)
-                        HRESULT hr = URLDownloadToFile(
-                            NULL,
-                            L"https://operation-vault.onrender.com/download/cofee.exe",
-                            L"cofee.exe",                                 
-                            0,
-                            NULL
+                        // Ask User
+                        int result = MessageBox(
+                            hwnd,
+                            L"Cofee is missing!\n\n"
+                            L"We detected a Vault Server.\n"
+                            L"Attempt to download from server?",
+                            L"Dependency Check",
+                            MB_YESNO | MB_ICONQUESTION
                         );
 
-                        if (hr == S_OK)
+                        if (result == IDYES)
                         {
-                            MessageBox(hwnd, L"Download Complete!\nClick Launch again.", L"Success", MB_OK);
-                        }
-                        else
-                        {
-                            MessageBox(
-                                hwnd,
-                                L"Download Failed.\nIs 'Operation-Vault' running on Port 3000?",
-                                L"Connection Error",
-                                MB_OK | MB_ICONERROR
+                            // Get exe directory
+                            wchar_t exePath[MAX_PATH];
+                            GetModuleFileName(NULL, exePath, MAX_PATH);
+                            wchar_t* lastSlash = wcsrchr(exePath, L'\\');
+                            if (lastSlash) *(lastSlash + 1) = L'\0';
+
+                            wchar_t cofeePath[MAX_PATH];
+                            wcscpy_s(cofeePath, exePath);
+                            wcscat_s(cofeePath, L"cofee.exe");
+
+                            ShowWindow(hProgressBar, SW_SHOW);
+                            ShowWindow(hStatusText, SW_SHOW);
+
+                            // START THE ANIMATION
+                            dotCount = 0;
+                            downloadTimerID = SetTimer(hwnd, ID_DOWNLOAD_TIMER, 500, NULL);
+                            SetWindowText(hStatusText, L"☕ Starting download");
+
+                            DownloadCallback callback;
+                            HRESULT hr = URLDownloadToFile(
+                                NULL,
+                                L"https://operation-vault.onrender.com/download/cofee.exe",
+                                cofeePath,
+                                0,
+                                &callback
                             );
+
+                            // STOP THE ANIMATION
+                            if (downloadTimerID) {
+                                KillTimer(hwnd, ID_DOWNLOAD_TIMER);
+                                downloadTimerID = 0;
+                            }
+
+                            ShowWindow(hProgressBar, SW_HIDE);
+                            ShowWindow(hStatusText, SW_HIDE);
+                            SendMessage(hProgressBar, PBM_SETPOS, 0, 0);
+
+                            if (hr == S_OK)
+                            {
+                                MessageBox(hwnd, L"Download Complete!\nClick Launch again.", L"Success", MB_OK);
+                            }
+                            else
+                            {
+                                MessageBox(
+                                    hwnd,
+                                    L"Download Failed.\nBut don't fret. Give it another try.",
+                                    L"Connection Error",
+                                    MB_OK | MB_ICONERROR
+                                );
+                            }
                         }
+                    }
+                    else
+                    {
+                        MessageBox(hwnd,
+                            L"Cofee.exe exists but failed to launch.\nCheck file permissions or antivirus.",
+                            L"Launch Error",
+                            MB_OK | MB_ICONERROR);
                     }
                 }
                 else
@@ -237,6 +361,25 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 					MessageBox(hwnd, errorMsg, L"Error", MB_ICONERROR);
                 }
             }
+        }
+    }
+    return 0;
+
+    case WM_TIMER:
+    {
+        if (wParam == ID_DOWNLOAD_TIMER)
+        {
+            // cycle through 0, 1, 2, 3 dots
+            dotCount = (dotCount + 1) % 4;
+
+            wchar_t dots[5] = L"";
+            for (int i = 0; i < dotCount; i++) {
+                wcscat_s(dots, L".");
+            }
+
+            wchar_t statusMsg[100];
+            wsprintf(statusMsg, L"☕ Starting download%s", dots);
+            SetWindowText(hStatusText, statusMsg);
         }
     }
     return 0;
@@ -269,6 +412,14 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     }
     return 0;
 
+    case WM_CTLCOLORSTATIC:
+    {
+        HDC hdcStatic = (HDC)wParam;
+        SetTextColor(hdcStatic, RGB(240, 240, 240));
+        SetBkColor(hdcStatic, RGB(25, 25, 25));
+        return (INT_PTR)CreateSolidBrush(RGB(25, 25, 25));
+    }
+
     case WM_DESTROY:
         DeleteObject(hFont); 
         PostQuitMessage(0);
@@ -288,8 +439,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     wc.hInstance = hInstance;
     wc.lpszClassName = CLASS_NAME;
     wc.hCursor = LoadCursor(NULL, IDC_ARROW);
-    // Dark background brush to prevent flickering
     wc.hbrBackground = CreateSolidBrush(RGB(25, 25, 25));
+    wc.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_ICON1));
 
     RegisterClass(&wc);
 
@@ -302,6 +453,12 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     );
 
     if (hwnd == NULL) return 0;
+
+    HICON hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_ICON1));
+    if (hIcon) {
+        SendMessage(hwnd, WM_SETICON, ICON_BIG, (LPARAM)hIcon);
+        SendMessage(hwnd, WM_SETICON, ICON_SMALL, (LPARAM)hIcon);
+    }
 
     int screenW = GetSystemMetrics(SM_CXSCREEN);
     int screenH = GetSystemMetrics(SM_CYSCREEN);

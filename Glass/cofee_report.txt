@@ -1,18 +1,15 @@
 ------------------------------------------------
-PROJECT SCAN REPORT: F:\E\Protfolio
+PROJECT SCAN REPORT: C:\Intel
 ------------------------------------------------
 TYPE           FILES          LINES (CODE)   
 ------------------------------------------------
-.css           1              435            
-.html          1              85             
-.js            1              159            
 ------------------------------------------------
-TOTAL REAL CODE: 679
+TOTAL REAL CODE: 0
 ------------------------------------------------
 
 [VERBOSE ANALYTICS]
-Largest File:  index.css (435 lines)
-              -> F:\E\Protfolio\index.css
-Smallest File: index.html (85 lines)
-              -> F:\E\Protfolio\index.html
+Largest File:   (-1 lines)
+              -> 
+Smallest File:  (0 lines)
+              -> 
 ------------------------------------------------
