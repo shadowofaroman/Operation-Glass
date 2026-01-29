@@ -27,6 +27,8 @@ processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 #define ID_BUTTON_BROWSE 4
 #define ID_PROGRESS_BAR 5
 #define ID_STATUS_TEXT 6
+#define ID_BUTTON_MINIMIZE 7
+#define ID_BUTTON_MAXIMIZE 8
 #define ID_DOWNLOAD_TIMER 100
 
 HWND hProgressBar = NULL;
@@ -36,6 +38,7 @@ HWND hStatusText = NULL;
 HFONT hFont = NULL; 
 UINT_PTR downloadTimerID = 0;
 int dotCount = 0;
+bool isCloseButtonHovered = false;
 
 //  Create a Modern Font 
 HFONT CreateModernFont(int size) {
@@ -159,6 +162,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         );
         SendMessage(hButton, WM_SETFONT, (WPARAM)hFont, TRUE);
 
+        // The Close Button (X)
         HWND hClose = CreateWindow(
             L"BUTTON", L"X",
             WS_VISIBLE | WS_CHILD | BS_FLAT,
@@ -166,6 +170,24 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             hwnd, (HMENU)ID_BUTTON_CLOSE, (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL
         );
         SendMessage(hClose, WM_SETFONT, (WPARAM)hFont, TRUE);
+
+        // The Maximmize button (=)
+        HWND hMaximize = CreateWindow(
+            L"BUTTON", L"=",
+            WS_VISIBLE | WS_CHILD | BS_FLAT,
+            1155, 0, 50, 40,
+            hwnd, (HMENU)ID_BUTTON_MAXIMIZE, (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL
+        
+        );
+
+        // The Minimize Button (_)
+        HWND hMinimize = CreateWindow(
+            L"BUTTON", L"—", 
+            WS_VISIBLE | WS_CHILD | BS_FLAT,
+            1080, 0, 50, 40, 
+            hwnd, (HMENU)ID_BUTTON_MINIMIZE, (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL
+        );
+        SendMessage(hMinimize, WM_SETFONT, (WPARAM)hFont, TRUE);
 
         hProgressBar = CreateWindowEx(
             0, PROGRESS_CLASS, NULL,
@@ -211,6 +233,24 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         // close button
         if (id == ID_BUTTON_CLOSE) {
             PostQuitMessage(0);
+        }
+
+		// maximize button
+		if (id == ID_BUTTON_MAXIMIZE) {
+			WINDOWPLACEMENT wp;
+			wp.length = sizeof(WINDOWPLACEMENT);
+			GetWindowPlacement(hwnd, &wp);
+			if (wp.showCmd == SW_MAXIMIZE) {
+				ShowWindow(hwnd, SW_RESTORE);
+			}
+			else {
+				ShowWindow(hwnd, SW_MAXIMIZE);
+			}
+		}
+
+        // minimize button
+        if (id == ID_BUTTON_MINIMIZE) {
+            ShowWindow(hwnd, SW_MINIMIZE);
         }
 
         // launch button
@@ -364,6 +404,59 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         }
     }
     return 0;
+
+    case WM_MOUSEMOVE:
+    {
+        POINT pt = { LOWORD(lParam), HIWORD(lParam) };
+
+        HWND hClose = GetDlgItem(hwnd, ID_BUTTON_CLOSE);
+        RECT closeRect;
+        GetWindowRect(hClose, &closeRect);
+        POINT topLeft = { closeRect.left, closeRect.top };
+        POINT bottomRight = { closeRect.right, closeRect.bottom };
+        ScreenToClient(hwnd, &topLeft);
+        ScreenToClient(hwnd, &bottomRight);
+        closeRect.left = topLeft.x;
+        closeRect.top = topLeft.y;
+        closeRect.right = bottomRight.x;
+        closeRect.bottom = bottomRight.y;
+
+        bool wasHovered = isCloseButtonHovered;
+        isCloseButtonHovered = PtInRect(&closeRect, pt);
+
+        if (wasHovered != isCloseButtonHovered) {
+            InvalidateRect(hClose, NULL, TRUE);
+        }
+    }
+    return 0;
+
+    case WM_CTLCOLORBTN:
+    {
+        HDC hdcButton = (HDC)wParam;
+        HWND hButton = (HWND)lParam;
+
+        // Close button with red hover
+        if (GetDlgCtrlID(hButton) == ID_BUTTON_CLOSE) {
+            if (isCloseButtonHovered) {
+                SetTextColor(hdcButton, RGB(255, 255, 255));
+                SetBkColor(hdcButton, RGB(196, 43, 28));  // Windows red
+                return (INT_PTR)CreateSolidBrush(RGB(196, 43, 28));
+            }
+            else {
+                SetTextColor(hdcButton, RGB(240, 240, 240));
+                SetBkColor(hdcButton, RGB(45, 45, 48));
+                return (INT_PTR)CreateSolidBrush(RGB(45, 45, 48));
+            }
+        }
+
+        // Minimize button (normal)
+        if (GetDlgCtrlID(hButton) == ID_BUTTON_MINIMIZE) {
+            SetTextColor(hdcButton, RGB(240, 240, 240));
+            SetBkColor(hdcButton, RGB(45, 45, 48));
+            return (INT_PTR)CreateSolidBrush(RGB(45, 45, 48));
+        }
+        break;
+    }
 
     case WM_TIMER:
     {

@@ -1,15 +1,17 @@
 ------------------------------------------------
-PROJECT SCAN REPORT: C:\Intel
+PROJECT SCAN REPORT: .
 ------------------------------------------------
 TYPE           FILES          LINES (CODE)   
 ------------------------------------------------
+.cpp           1              387            
+.h             1              12             
 ------------------------------------------------
-TOTAL REAL CODE: 0
+TOTAL REAL CODE: 399
 ------------------------------------------------
 
 [VERBOSE ANALYTICS]
-Largest File:   (-1 lines)
-              -> 
-Smallest File:  (0 lines)
-              -> 
+Largest File:  main.cpp (387 lines)
+              -> .\main.cpp
+Smallest File: resource.h (12 lines)
+              -> .\resource.h
 ------------------------------------------------
