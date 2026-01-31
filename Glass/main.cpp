@@ -8,17 +8,23 @@ name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
 processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
 #pragma comment(lib, "urlmon.lib")
+#pragma comment(lib, "dwmapi.lib") 
 
 #include <windows.h>
 #include <string>
 #include <commctrl.h>
 #include <shobjidl.h>
 #include <urlmon.h>
+#include <dwmapi.h>
 
 #pragma message("resource.h IDI_ICON1 = " STRINGIZE(IDI_ICON1))
 #include "resource.h"
 
 #pragma comment(lib, "comctl32.lib")
+
+#ifndef DWMWA_USE_IMMERSIVE_DARK_MODE
+#define DWMWA_USE_IMMERSIVE_DARK_MODE 20
+#endif
 
 // --- CONTROLS IDs ---
 #define ID_BUTTON_LAUNCH 1
@@ -421,12 +427,6 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM l
         FillRect(hdc, &clientRect, brush);
         DeleteObject(brush);
 
-
-        RECT headerRect = { 0, 0, clientRect.right, 40 }; 
-        HBRUSH headerBrush = CreateSolidBrush(RGB(45, 45, 48));
-        FillRect(hdc, &headerRect, headerBrush);
-        DeleteObject(headerBrush);
-
         HFONT hTitleFont = CreateModernFont(36); 
         SelectObject(hdc, hTitleFont);
         SetBkMode(hdc, TRANSPARENT);
@@ -446,6 +446,13 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM l
         SetTextColor(hdcStatic, RGB(240, 240, 240));
         SetBkColor(hdcStatic, RGB(25, 25, 25));
         return (INT_PTR)CreateSolidBrush(RGB(25, 25, 25));
+    }
+
+    case WM_NCACTIVATE:
+    {
+        BOOL useDarkMode = TRUE;
+        DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &useDarkMode, sizeof(useDarkMode));
+        return DefWindowProc(hwnd, uMsg, wParam, lParam);
     }
 
     case WM_DESTROY:
@@ -481,6 +488,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     );
 
     if (hwnd == NULL) return 0;
+
+    BOOL useDarkMode = TRUE;
+    DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &useDarkMode, sizeof(useDarkMode));
 
     HICON hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_ICON1));
     if (hIcon) {
