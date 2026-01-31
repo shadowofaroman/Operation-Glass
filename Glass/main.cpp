@@ -22,13 +22,10 @@ processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
 // --- CONTROLS IDs ---
 #define ID_BUTTON_LAUNCH 1
-#define ID_INPUT_BOX 2
-#define ID_BUTTON_CLOSE 3  
+#define ID_INPUT_BOX 2 
 #define ID_BUTTON_BROWSE 4
 #define ID_PROGRESS_BAR 5
 #define ID_STATUS_TEXT 6
-#define ID_BUTTON_MINIMIZE 7
-#define ID_BUTTON_MAXIMIZE 8
 #define ID_DOWNLOAD_TIMER 100
 
 HWND hProgressBar = NULL;
@@ -38,17 +35,16 @@ HWND hStatusText = NULL;
 HFONT hFont = NULL; 
 UINT_PTR downloadTimerID = 0;
 int dotCount = 0;
-bool isCloseButtonHovered = false;
 
 //  Create a Modern Font 
-HFONT CreateModernFont(int size) {
+static HFONT CreateModernFont(int size) {
     return CreateFont(
         size, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
         DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
 }
 
-bool OpenFolderDialog(HWND owner, wchar_t* buffer, int maxLen)
+static bool OpenFolderDialog(HWND owner, wchar_t* buffer, int maxLen)
 {
 	IFileDialog* pFileDialog = NULL;
 	HRESULT hr = CoCreateInstance(CLSID_FileOpenDialog, NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pFileDialog));
@@ -125,7 +121,7 @@ public:
     }
 };
 
-LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
     switch (uMsg)
     {
@@ -162,33 +158,6 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         );
         SendMessage(hButton, WM_SETFONT, (WPARAM)hFont, TRUE);
 
-        // The Close Button (X)
-        HWND hClose = CreateWindow(
-            L"BUTTON", L"X",
-            WS_VISIBLE | WS_CHILD | BS_FLAT,
-            1230, 0, 50, 40, 
-            hwnd, (HMENU)ID_BUTTON_CLOSE, (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL
-        );
-        SendMessage(hClose, WM_SETFONT, (WPARAM)hFont, TRUE);
-
-        // The Maximmize button (=)
-        HWND hMaximize = CreateWindow(
-            L"BUTTON", L"=",
-            WS_VISIBLE | WS_CHILD | BS_FLAT,
-            1155, 0, 50, 40,
-            hwnd, (HMENU)ID_BUTTON_MAXIMIZE, (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL
-        
-        );
-
-        // The Minimize Button (_)
-        HWND hMinimize = CreateWindow(
-            L"BUTTON", L"—", 
-            WS_VISIBLE | WS_CHILD | BS_FLAT,
-            1080, 0, 50, 40, 
-            hwnd, (HMENU)ID_BUTTON_MINIMIZE, (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL
-        );
-        SendMessage(hMinimize, WM_SETFONT, (WPARAM)hFont, TRUE);
-
         hProgressBar = CreateWindowEx(
             0, PROGRESS_CLASS, NULL,
             WS_CHILD | PBS_SMOOTH,
@@ -216,6 +185,40 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     }
     return 0;
 
+    case WM_SIZE:
+    {
+        int width = LOWORD(lParam);
+        int height = HIWORD(lParam);
+
+        // Don't calculate if minimized
+        if (width == 0 || height == 0) return 0;
+
+        int btnW = 50;
+        int btnH = 40;
+
+        int centerX = width / 2;
+        int centerY = height / 2;
+
+        // Input Box (Width 400, Height 35) -> Centered
+        HWND hEdit = GetDlgItem(hwnd, ID_INPUT_BOX);
+        MoveWindow(hEdit, centerX - 200, centerY - 50, 400, 35, TRUE);
+
+        // Browse Button (Right of Input)
+        HWND hBrowse = GetDlgItem(hwnd, ID_BUTTON_BROWSE);
+        MoveWindow(hBrowse, centerX + 210, centerY - 50, 50, 35, TRUE);
+
+        // Launch Button (Width 280, Height 50) -> Centered below input
+        HWND hLaunch = GetDlgItem(hwnd, ID_BUTTON_LAUNCH);
+        MoveWindow(hLaunch, centerX - 140, centerY + 10, 280, 50, TRUE);
+
+        // Progress Bar & Status
+        if (hProgressBar) MoveWindow(hProgressBar, centerX - 200, centerY + 80, 400, 30, TRUE);
+        if (hStatusText) MoveWindow(hStatusText, centerX - 200, centerY + 120, 400, 30, TRUE);
+
+        InvalidateRect(hwnd, NULL, TRUE);
+    }
+    return 0;
+
     case WM_COMMAND:
     {
         int id = LOWORD(wParam);
@@ -230,28 +233,6 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             }
         }
 
-        // close button
-        if (id == ID_BUTTON_CLOSE) {
-            PostQuitMessage(0);
-        }
-
-		// maximize button
-		if (id == ID_BUTTON_MAXIMIZE) {
-			WINDOWPLACEMENT wp;
-			wp.length = sizeof(WINDOWPLACEMENT);
-			GetWindowPlacement(hwnd, &wp);
-			if (wp.showCmd == SW_MAXIMIZE) {
-				ShowWindow(hwnd, SW_RESTORE);
-			}
-			else {
-				ShowWindow(hwnd, SW_MAXIMIZE);
-			}
-		}
-
-        // minimize button
-        if (id == ID_BUTTON_MINIMIZE) {
-            ShowWindow(hwnd, SW_MINIMIZE);
-        }
 
         // launch button
         if (id == ID_BUTTON_LAUNCH)
@@ -405,58 +386,9 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     }
     return 0;
 
-    case WM_MOUSEMOVE:
-    {
-        POINT pt = { LOWORD(lParam), HIWORD(lParam) };
+  
 
-        HWND hClose = GetDlgItem(hwnd, ID_BUTTON_CLOSE);
-        RECT closeRect;
-        GetWindowRect(hClose, &closeRect);
-        POINT topLeft = { closeRect.left, closeRect.top };
-        POINT bottomRight = { closeRect.right, closeRect.bottom };
-        ScreenToClient(hwnd, &topLeft);
-        ScreenToClient(hwnd, &bottomRight);
-        closeRect.left = topLeft.x;
-        closeRect.top = topLeft.y;
-        closeRect.right = bottomRight.x;
-        closeRect.bottom = bottomRight.y;
-
-        bool wasHovered = isCloseButtonHovered;
-        isCloseButtonHovered = PtInRect(&closeRect, pt);
-
-        if (wasHovered != isCloseButtonHovered) {
-            InvalidateRect(hClose, NULL, TRUE);
-        }
-    }
-    return 0;
-
-    case WM_CTLCOLORBTN:
-    {
-        HDC hdcButton = (HDC)wParam;
-        HWND hButton = (HWND)lParam;
-
-        // Close button with red hover
-        if (GetDlgCtrlID(hButton) == ID_BUTTON_CLOSE) {
-            if (isCloseButtonHovered) {
-                SetTextColor(hdcButton, RGB(255, 255, 255));
-                SetBkColor(hdcButton, RGB(196, 43, 28));  // Windows red
-                return (INT_PTR)CreateSolidBrush(RGB(196, 43, 28));
-            }
-            else {
-                SetTextColor(hdcButton, RGB(240, 240, 240));
-                SetBkColor(hdcButton, RGB(45, 45, 48));
-                return (INT_PTR)CreateSolidBrush(RGB(45, 45, 48));
-            }
-        }
-
-        // Minimize button (normal)
-        if (GetDlgCtrlID(hButton) == ID_BUTTON_MINIMIZE) {
-            SetTextColor(hdcButton, RGB(240, 240, 240));
-            SetBkColor(hdcButton, RGB(45, 45, 48));
-            return (INT_PTR)CreateSolidBrush(RGB(45, 45, 48));
-        }
-        break;
-    }
+   
 
     case WM_TIMER:
     {
@@ -482,13 +414,16 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         PAINTSTRUCT ps;
         HDC hdc = BeginPaint(hwnd, &ps);
 
+        RECT clientRect;
+        GetClientRect(hwnd, &clientRect);
+
         HBRUSH brush = CreateSolidBrush(RGB(25, 25, 25));
-        FillRect(hdc, &ps.rcPaint, brush);
+        FillRect(hdc, &clientRect, brush);
         DeleteObject(brush);
 
 
-        RECT headerRect = { 0, 0, 1280, 40 };
-        HBRUSH headerBrush = CreateSolidBrush(RGB(45, 45, 48)); 
+        RECT headerRect = { 0, 0, clientRect.right, 40 }; 
+        HBRUSH headerBrush = CreateSolidBrush(RGB(45, 45, 48));
         FillRect(hdc, &headerRect, headerBrush);
         DeleteObject(headerBrush);
 
@@ -539,7 +474,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 
     HWND hwnd = CreateWindowEx(
         0, CLASS_NAME, L"Project Glass",
-        WS_POPUP | WS_VISIBLE, 
+        WS_OVERLAPPEDWINDOW | WS_VISIBLE,
         CW_USEDEFAULT, CW_USEDEFAULT,
         1280, 720,
         NULL, NULL, hInstance, NULL
