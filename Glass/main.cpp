@@ -33,21 +33,35 @@ processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
 
 
-// CONTROLS IDs 
+// control ids 
 #define ID_BUTTON_LAUNCH 1
 #define ID_INPUT_BOX 2 
 #define ID_BUTTON_BROWSE 4
 #define ID_PROGRESS_BAR 5
 #define ID_STATUS_TEXT 6
 #define ID_BUTTON_HISTORY 9
+
 #define ID_LIST_HISTORY 10
 #define ID_BUTTON_CLEAR 11
+
+#define ID_LOADER_OVERLAY 20
+#define ID_LOADER_TITLE 21
+#define ID_LOADER_PROGRESS 22
+#define ID_LOADER_STATUS 23
+#define ID_SCAN_TIMER 101
 #define ID_DOWNLOAD_TIMER 100
 
 HWND hProgressBar = NULL;
 HWND hStatusText = NULL;
+HWND hLoaderOverlay = NULL;
+HWND hLoaderTitle = NULL;
+HWND hLoaderProgress = NULL;
+HWND hLoaderStatus = NULL;
 
-// --- GLOBAL VARIABLES ---
+// booleans
+bool isScanning = false;
+
+// global variables
 HFONT hFont = NULL; 
 UINT_PTR downloadTimerID = 0;
 int dotCount = 0;
@@ -121,7 +135,7 @@ public:
         return S_OK;
     }
 
-    // Required IBindStatusCallback methods
+    // required IBindStatusCallback methods
     STDMETHOD(OnStartBinding)(DWORD, IBinding*) { return S_OK; }
     STDMETHOD(GetBindInfo)(DWORD*, BINDINFO*) { return S_OK; }
     STDMETHOD(OnDataAvailable)(DWORD, DWORD, FORMATETC*, STGMEDIUM*) { return S_OK; }
@@ -202,6 +216,31 @@ class HistoryManager {
 
 HistoryManager g_History;
 
+
+static void ShowLoader(HWND hwnd) {
+    isScanning = true;
+    ShowWindow(hLoaderOverlay, SW_SHOW);
+    ShowWindow(hLoaderTitle, SW_SHOW);
+    ShowWindow(hLoaderProgress, SW_SHOW);
+    ShowWindow(hLoaderStatus, SW_SHOW);
+    SendMessage(hLoaderProgress, PBM_SETPOS, 0, 0);
+
+    SetTimer(hwnd, ID_SCAN_TIMER, 100, NULL);
+
+    SetWindowPos(hLoaderOverlay, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+    InvalidateRect(hwnd, NULL, TRUE);
+}
+
+static void HideLoader(HWND hwnd) {
+    isScanning = false;
+    ShowWindow(hLoaderOverlay, SW_HIDE);
+    ShowWindow(hLoaderTitle, SW_HIDE);
+    ShowWindow(hLoaderProgress, SW_HIDE);
+    ShowWindow(hLoaderStatus, SW_HIDE);
+    KillTimer(hwnd, ID_SCAN_TIMER);
+    InvalidateRect(hwnd, NULL, TRUE);
+}
+
 static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
     switch (uMsg)
@@ -266,6 +305,42 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM l
         );
         SendMessage(hProgressBar, PBM_SETRANGE, 0, MAKELPARAM(0, 100));
 
+        hLoaderOverlay = CreateWindow(
+            L"STATIC", L"",
+            WS_CHILD | SS_CENTER,
+            0, 0, 1280, 720,
+            hwnd, (HMENU)ID_LOADER_OVERLAY,
+            (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL
+        );
+
+        hLoaderTitle = CreateWindow(
+            L"STATIC", L"☕ Brewing Coffee...",
+            WS_CHILD | SS_CENTER,
+            440, 250, 400, 40,
+            hwnd, (HMENU)ID_LOADER_TITLE,
+            (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL
+        );
+        SendMessage(hLoaderTitle, WM_SETFONT, (WPARAM)CreateModernFont(28), TRUE);
+
+        hLoaderProgress = CreateWindowEx(
+            0, PROGRESS_CLASS, NULL,
+            WS_CHILD | PBS_SMOOTH,
+            440, 310, 400, 30,
+            hwnd, (HMENU)ID_LOADER_PROGRESS,
+            (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL
+        );
+        SendMessage(hLoaderProgress, PBM_SETRANGE, 0, MAKELPARAM(0, 100));
+        SendMessage(hLoaderProgress, PBM_SETPOS, 0, 0);
+
+        hLoaderStatus = CreateWindow(
+            L"STATIC", L"Initializing scan...",
+            WS_CHILD | SS_CENTER,
+            440, 350, 400, 30,
+            hwnd, (HMENU)ID_LOADER_STATUS,
+            (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL
+        );
+        SendMessage(hLoaderStatus, WM_SETFONT, (WPARAM)CreateModernFont(18), TRUE);
+
         hStatusText = CreateWindow(
             L"STATIC", L"",
             WS_CHILD | SS_CENTER,
@@ -315,6 +390,18 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM l
         if (hProgressBar) MoveWindow(hProgressBar, centerX - 200, centerY + 80, 400, 30, TRUE);
         if (hStatusText) MoveWindow(hStatusText, centerX - 200, centerY + 120, 400, 30, TRUE);
 
+        if (hLoaderOverlay)
+            MoveWindow(hLoaderOverlay, 0, 0, width, height, TRUE);
+
+        if (hLoaderTitle)
+            MoveWindow(hLoaderTitle, centerX - 200, centerY - 50, 400, 40, TRUE);
+
+        if (hLoaderProgress)
+            MoveWindow(hLoaderProgress, centerX - 200, centerY + 10, 400, 30, TRUE);
+
+        if (hLoaderStatus)
+            MoveWindow(hLoaderStatus, centerX - 200, centerY + 50, 400, 30, TRUE);
+
         InvalidateRect(hwnd, NULL, TRUE);
     }
     return 0;
@@ -363,18 +450,50 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM l
 
             PROCESS_INFORMATION pi;
 
+            ShowLoader(hwnd);
+            SetWindowText(hLoaderStatus, L"Starting COFEE scan...");
+
             // launch Cofee
             if (CreateProcess(NULL, &command[0], NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi))
             {
                 CloseHandle(hWritePipe);
-                char buffer[4096]; DWORD bytesRead; std::string output;
+
+                int progress = 0;
+                char buffer[4096];
+                DWORD bytesRead;
+                std::string output;
+
+				// read output
+               // char buffer[4096]; DWORD bytesRead; std::string output;
                 while (ReadFile(hReadPipe, buffer, sizeof(buffer) - 1, &bytesRead, NULL) && bytesRead > 0) {
-                    buffer[bytesRead] = '\0'; output += buffer;
+
+                    buffer[bytesRead] = '\0'; 
+                    output += buffer;
+
+                    progress = min(progress + 5, 95);
+                    SendMessage(hLoaderProgress, PBM_SETPOS, progress, 0);
+
+                    if (progress < 30)
+                        SetWindowText(hLoaderStatus, L"☕ Brewing coffee...");
+                    else if (progress < 60)
+                        SetWindowText(hLoaderStatus, L"🔍 Scanning files...");
+                    else if (progress < 90)
+                        SetWindowText(hLoaderStatus, L"🛡️ Analyzing threats...");
+                    else
+                        SetWindowText(hLoaderStatus, L"✅ Generating report...");
+
                 }
+
+                SendMessage(hLoaderProgress, PBM_SETPOS, 100, 0);
+                SetWindowText(hLoaderStatus, L"Scan complete!");
+                Sleep(500);
+
                 CloseHandle(hReadPipe);
                 WaitForSingleObject(pi.hProcess, INFINITE);
-                CloseHandle(pi.hProcess); CloseHandle(pi.hThread);
+                CloseHandle(pi.hProcess); 
+                CloseHandle(pi.hThread);
 
+                HideLoader(hwnd);
                 int size = MultiByteToWideChar(CP_UTF8, 0, output.c_str(), -1, NULL, 0);
                 wchar_t* wideOutput = new wchar_t[size];
                 MultiByteToWideChar(CP_UTF8, 0, output.c_str(), -1, wideOutput, size);
@@ -382,6 +501,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM l
                 delete[] wideOutput;
             }
             else {
+                HideLoader(hwnd);
                 DWORD error = GetLastError();
 
                 CloseHandle(hReadPipe);
