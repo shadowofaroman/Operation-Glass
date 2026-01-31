@@ -1,17 +1,17 @@
 ------------------------------------------------
-PROJECT SCAN REPORT: .
+PROJECT SCAN REPORT: F:\E\backend\AflreskoV2
 ------------------------------------------------
 TYPE           FILES          LINES (CODE)   
 ------------------------------------------------
-.cpp           1              387            
-.h             1              12             
+.json          4              5406           
+.ts            57             2517           
 ------------------------------------------------
-TOTAL REAL CODE: 399
+TOTAL REAL CODE: 7923
 ------------------------------------------------
 
 [VERBOSE ANALYTICS]
-Largest File:  main.cpp (387 lines)
-              -> .\main.cpp
-Smallest File: resource.h (12 lines)
-              -> .\resource.h
+Largest File:  package-lock.json (5324 lines)
+              -> F:\E\backend\AflreskoV2\package-lock.json
+Smallest File: constants.ts (1 lines)
+              -> F:\E\backend\AflreskoV2\src\utils\constants.ts
 ------------------------------------------------

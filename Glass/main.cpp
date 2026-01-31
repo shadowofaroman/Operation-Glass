@@ -16,6 +16,11 @@ processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 #include <shobjidl.h>
 #include <urlmon.h>
 #include <dwmapi.h>
+#include <algorithm>
+#include <vector>
+#include <fstream>
+#include <sstream>
+#include <ctime>
 
 #pragma message("resource.h IDI_ICON1 = " STRINGIZE(IDI_ICON1))
 #include "resource.h"
@@ -26,12 +31,17 @@ processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 #define DWMWA_USE_IMMERSIVE_DARK_MODE 20
 #endif
 
-// --- CONTROLS IDs ---
+
+
+// CONTROLS IDs 
 #define ID_BUTTON_LAUNCH 1
 #define ID_INPUT_BOX 2 
 #define ID_BUTTON_BROWSE 4
 #define ID_PROGRESS_BAR 5
 #define ID_STATUS_TEXT 6
+#define ID_BUTTON_HISTORY 9
+#define ID_LIST_HISTORY 10
+#define ID_BUTTON_CLEAR 11
 #define ID_DOWNLOAD_TIMER 100
 
 HWND hProgressBar = NULL;
@@ -41,6 +51,12 @@ HWND hStatusText = NULL;
 HFONT hFont = NULL; 
 UINT_PTR downloadTimerID = 0;
 int dotCount = 0;
+
+// sruct to hold history items
+struct HistoryItem {
+    std::wstring timestamp;
+    std::wstring path;
+};
 
 //  Create a Modern Font 
 static HFONT CreateModernFont(int size) {
@@ -105,7 +121,7 @@ public:
         return S_OK;
     }
 
-    // Required IBindStatusCallback methods (minimal implementation)
+    // Required IBindStatusCallback methods
     STDMETHOD(OnStartBinding)(DWORD, IBinding*) { return S_OK; }
     STDMETHOD(GetBindInfo)(DWORD*, BINDINFO*) { return S_OK; }
     STDMETHOD(OnDataAvailable)(DWORD, DWORD, FORMATETC*, STGMEDIUM*) { return S_OK; }
@@ -127,6 +143,65 @@ public:
     }
 };
 
+class HistoryManager {
+   private:
+    const std::wstring dbFile = L"glass_history.db";
+
+    std::wstring GetCurrentTimeStr() {
+        time_t now = time(0);
+        tm ltm;
+        localtime_s(&ltm, &now);
+        wchar_t buffer[32];
+        wcsftime(buffer, 32, L"%Y-%m-%d %H:%M:%S", &ltm);
+        return std::wstring(buffer);
+    }
+
+   public:
+       void AddEntry(const std::wstring& path) {
+           std::wofstream file(dbFile, std::ios::app);
+           file << GetCurrentTimeStr() << L"|" << path << L"\n";
+       }
+
+       std::vector<HistoryItem> GetHistory(int limit) {
+           std::vector<HistoryItem> items;
+           std::wifstream file(dbFile);
+
+           if (!file.is_open()) return items;
+
+           std::wstring line;
+           std::vector<std::wstring> allLines;
+
+           while (std::getline(file, line)) {
+               if (!line.empty()) allLines.push_back(line);
+           }
+
+           // Reverse
+           std::reverse(allLines.begin(), allLines.end());
+
+           // Parse up to 'limit'
+           int count = 0;
+           for (const auto& rawLine : allLines) {
+               if (count >= limit && limit != -1) break;
+
+               size_t delimPos = rawLine.find(L'|');
+               if (delimPos != std::wstring::npos) {
+                   HistoryItem item;
+                   item.timestamp = rawLine.substr(0, delimPos);
+                   item.path = rawLine.substr(delimPos + 1);
+                   items.push_back(item);
+                   count++;
+               }
+           }
+           return items;
+       }
+
+       void Clear() {
+           std::wofstream file(dbFile, std::ios::trunc); // Truncate (Wipe) file
+       }
+};
+
+HistoryManager g_History;
+
 static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
     switch (uMsg)
@@ -139,7 +214,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM l
         HWND hEdit = CreateWindow(
             L"EDIT", L"",
             WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL | ES_CENTER, 
-            390, 250, 400, 35, 
+            390, 250, 350, 35,
             hwnd, (HMENU)ID_INPUT_BOX, (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL
         );
         SendMessage(hEdit, WM_SETFONT, (WPARAM)hFont, TRUE);
@@ -155,7 +230,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM l
         );
         SendMessage(hBrowse, WM_SETFONT, (WPARAM)hFont, TRUE);
 
-        // The Launch Button
+        // the launch button
         HWND hButton = CreateWindow(
             L"BUTTON", L"LAUNCH COFEE",
             WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON | BS_FLAT,
@@ -163,6 +238,24 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM l
             hwnd, (HMENU)ID_BUTTON_LAUNCH, (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL
         );
         SendMessage(hButton, WM_SETFONT, (WPARAM)hFont, TRUE);
+
+        // histry toggle button
+        HWND hHistoryBtn = CreateWindow(
+            L"BUTTON", L"⏱",
+            WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON | BS_FLAT,
+            750, 250, 40, 35,
+            hwnd, (HMENU)ID_BUTTON_HISTORY, (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL
+        );
+        SendMessage(hHistoryBtn, WM_SETFONT, (WPARAM)hFont, TRUE);
+
+        // the list button
+        HWND hList = CreateWindow(
+            L"LISTBOX", NULL,
+            WS_CHILD | WS_BORDER | LBS_NOTIFY | WS_VSCROLL,
+            390, 295, 460, 180, // below the input box here
+            hwnd, (HMENU)ID_LIST_HISTORY, (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL
+        );
+        SendMessage(hList, WM_SETFONT, (WPARAM)CreateModernFont(18), TRUE);
 
         hProgressBar = CreateWindowEx(
             0, PROGRESS_CLASS, NULL,
@@ -196,7 +289,6 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM l
         int width = LOWORD(lParam);
         int height = HIWORD(lParam);
 
-        // Don't calculate if minimized
         if (width == 0 || height == 0) return 0;
 
         int btnW = 50;
@@ -205,19 +297,21 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM l
         int centerX = width / 2;
         int centerY = height / 2;
 
-        // Input Box (Width 400, Height 35) -> Centered
         HWND hEdit = GetDlgItem(hwnd, ID_INPUT_BOX);
-        MoveWindow(hEdit, centerX - 200, centerY - 50, 400, 35, TRUE);
+        MoveWindow(hEdit, centerX - 230, centerY - 50, 350, 35, TRUE);
 
-        // Browse Button (Right of Input)
         HWND hBrowse = GetDlgItem(hwnd, ID_BUTTON_BROWSE);
-        MoveWindow(hBrowse, centerX + 210, centerY - 50, 50, 35, TRUE);
+        MoveWindow(hBrowse, centerX + 180, centerY - 50, 50, 35, TRUE);
 
-        // Launch Button (Width 280, Height 50) -> Centered below input
         HWND hLaunch = GetDlgItem(hwnd, ID_BUTTON_LAUNCH);
         MoveWindow(hLaunch, centerX - 140, centerY + 10, 280, 50, TRUE);
 
-        // Progress Bar & Status
+        HWND hHistoryBtn = GetDlgItem(hwnd, ID_BUTTON_HISTORY);
+        MoveWindow(hHistoryBtn, centerX + 130, centerY - 50, 40, 35, TRUE);
+
+        HWND hList = GetDlgItem(hwnd, ID_LIST_HISTORY);
+        MoveWindow(hList, centerX - 230, centerY + 105, 460, 180, TRUE);
+
         if (hProgressBar) MoveWindow(hProgressBar, centerX - 200, centerY + 80, 400, 30, TRUE);
         if (hStatusText) MoveWindow(hStatusText, centerX - 200, centerY + 120, 400, 30, TRUE);
 
@@ -245,6 +339,11 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM l
         {
             wchar_t pathBuffer[512];
             GetDlgItemText(hwnd, ID_INPUT_BOX, pathBuffer, 512);
+
+            // save to hostory
+            if (wcslen(pathBuffer) > 0) {
+                g_History.AddEntry(pathBuffer);
+            }
 
             std::wstring command = L"cofee.exe ";
             if (wcslen(pathBuffer) > 0) {
@@ -389,6 +488,60 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM l
                 }
             }
         }
+
+		// history button
+        if (id == ID_BUTTON_HISTORY)
+        {
+            HWND hList = GetDlgItem(hwnd, ID_LIST_HISTORY);
+
+            if (IsWindowVisible(hList)) {
+                ShowWindow(hList, SW_HIDE);
+            }
+            else {
+
+                // clear current list
+                SendMessage(hList, LB_RESETCONTENT, 0, 0);
+
+                // fetch from DB
+                std::vector<HistoryItem> history = g_History.GetHistory(20); // Last 20
+
+                for (const auto& item : history)
+                {
+                    std::wstring display = item.timestamp + L" | " + item.path;
+                    SendMessage(hList, LB_ADDSTRING, 0, (LPARAM)display.c_str());
+                }
+                SetWindowPos(hList, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+            }
+            
+        }
+
+        //history selection logic
+        if (id == ID_LIST_HISTORY && HIWORD(wParam) == LBN_SELCHANGE)
+        {
+            HWND hList = GetDlgItem(hwnd, ID_LIST_HISTORY);
+
+            int index = SendMessage(hList, LB_GETCURSEL, 0, 0);
+
+            if (index != LB_ERR)
+            {
+                int len = SendMessage(hList, LB_GETTEXTLEN, index, 0);
+                wchar_t* buffer = new wchar_t[len + 1];
+
+                SendMessage(hList, LB_GETTEXT, index, (LPARAM)buffer);
+
+                std::wstring fullText(buffer);
+                size_t split = fullText.find(L'|');
+                if (split != std::wstring::npos)
+                {
+                    std::wstring cleanPath = fullText.substr(split + 2); // +2 to skip "| "
+                    SetDlgItemText(hwnd, ID_INPUT_BOX, cleanPath.c_str());
+
+                    ShowWindow(hList, SW_HIDE);
+                }
+
+                delete[] buffer;
+            }
+        }
     }
     return 0;
 
@@ -446,6 +599,14 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM l
         SetTextColor(hdcStatic, RGB(240, 240, 240));
         SetBkColor(hdcStatic, RGB(25, 25, 25));
         return (INT_PTR)CreateSolidBrush(RGB(25, 25, 25));
+    }
+
+    case WM_CTLCOLORLISTBOX:
+    {
+        HDC hdcList = (HDC)wParam;
+        SetTextColor(hdcList, RGB(240, 240, 240)); 
+        SetBkColor(hdcList, RGB(45, 45, 48)); 
+        return (INT_PTR)CreateSolidBrush(RGB(45, 45, 48));
     }
 
     case WM_NCACTIVATE:
